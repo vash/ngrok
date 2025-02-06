@@ -1,0 +1,53 @@
+{{ define "key-list" }}
+<ul id="key-list" class="col-span-5 flex flex-col gap-2 mt-4">
+    {{ range . }}
+    {{ block "key-list-element" . }}
+    <li class="card w-full bg-neutral shadow-xl text-neutral-content">
+        <div class="card-body p-4">
+            <h3 class="card-title">
+                {{ .Description }}
+            </h3>
+            <div class="relative flex items-center gap-2">
+                <!-- Hidden AuthToken -->
+                <p id="key-{{ .ID }}" class="hidden">{{ .AuthToken }}</p>
+
+                <!-- Visible Placeholder -->
+                <p id="key-placeholder-{{ .ID }}">••••••••••</p>
+
+                <!-- Eye Icon -->
+                <button class="btn btn-ghost" hx-on:click="toggleVisibility('{{ .ID }}')">
+                    E
+                </button>
+
+                <!-- Copy Button -->
+                <button id="copy-btn-{{ .ID }}" class="btn btn-ghost" hx-on:click="copyToClipboard('{{ .ID }}')">
+                    C
+                </button>
+            </div>
+            <div class="card-actions justify-between items-end">
+                <p class="text-left text-xs text-accent font-medium">
+                    {{ .CreatedAt }}
+                </p>
+                <div>
+                    <button hx-delete="/del?id={{ .ID }}" hx-confirm="Are you sure you want to delete the key?"
+                        hx-target="closest li" hx-swap="delete" class="btn btn-ghost">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </li>
+    {{ end }}
+    {{ end }}
+
+    {{ if .ShowMore }}
+    <li>
+        <span hx-target="closest li" class="text-accent hover:text-accent-content mt-8"
+            hx-trigger="intersect once delay:500ms" hx-get="/keys?page={{ .IncPage }}" hx-select="ul > li"
+            hx-swap="outerHTML">
+            Load More…
+        </span>
+    </li>
+    {{ end }}
+</ul>
+{{ end }}
