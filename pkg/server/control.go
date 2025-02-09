@@ -8,6 +8,7 @@ import (
 	"ngrok/pkg/log"
 	"ngrok/pkg/msg"
 	"ngrok/pkg/server/auth"
+	"ngrok/pkg/server/config"
 	"ngrok/pkg/util"
 	"ngrok/pkg/version"
 	"runtime/debug"
@@ -20,7 +21,7 @@ const (
 	connReapInterval    = 10 * time.Second
 	controlWriteTimeout = 10 * time.Second
 	proxyStaleDuration  = 60 * time.Second
-	proxyMaxPoolSize    = 10
+	proxyMaxPoolSize    = 10 //TODO: replace config
 )
 
 type Control struct {
@@ -63,7 +64,7 @@ type Control struct {
 	shutdown *util.Shutdown
 }
 
-func NewControl(ctx context.Context, ctlConn conn.Conn, authMsg *msg.Auth) {
+func NewControl(ctx context.Context, config *config.Config, ctlConn conn.Conn, authMsg *msg.Auth) {
 	// create the object
 	c := &Control{
 		auth:            authMsg,
@@ -87,7 +88,7 @@ func NewControl(ctx context.Context, ctlConn conn.Conn, authMsg *msg.Auth) {
 	c.id = authMsg.ClientId
 	if c.id == "" {
 		// it's a new session, assign an ID after auth
-		err := auth.ValidateAPIKey(ctx, authMsg.User)
+		err := auth.ValidateAuthToken(ctx, config.Database, authMsg.User)
 		if err != nil {
 			log.Warn("Error validating API key: %v", err)
 			failAuth(fmt.Errorf("Authentication error: %v\nUse `ngrok set-auth` to set an auth token.", err))

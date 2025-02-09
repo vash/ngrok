@@ -2,168 +2,93 @@ package auth
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"ngrok/pkg/log"
 	"ngrok/pkg/server/db"
 	"ngrok/pkg/util"
-	"time"
 
-	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	"gorm.io/gorm"
 )
-
-var secretKey = []byte("supersecretkey")
 
 const (
 	apiKeySize = 32
 )
 
-type AccessKey struct {
-	ID          string    `json:"id"`
-	AuthToken   string    `json:"auth_token"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-}
-
-// createAPIKey generates a new API key and inserts it into the database.
-func CreateAPIKey(ctx context.Context, desc string) error {
-	db, err := db.GetConnection()
-	if err != nil {
-		return err
-	}
-	id := uuid.New().String()
-
+func CreateAuthToken(ctx context.Context, dbConn *gorm.DB, desc string) error {
 	authToken, err := util.SecureRandId(apiKeySize)
 	if err != nil {
 		return err
 	}
-	log.Info("authToken length %d", len(authToken))
 
-	stmt, err := db.PrepareContext(ctx, `
-		INSERT INTO apikeys (id, auth_token, description, created_at)
-		VALUES ($1, $2, $3, $4)
-	`)
-	if err != nil {
-		log.Error("Failed to prepare SQL statement: %v", err)
-		return fmt.Errorf("failed to prepare SQL statement: %w", err)
+	accessKey := db.AuthToken{
+		AuthToken:   authToken,
+		Description: desc,
 	}
-	defer stmt.Close()
-
-	_, err = stmt.ExecContext(ctx, id, authToken, desc, time.Now().UTC())
-	if err != nil {
-		log.Error("Failed to insert API key: %v", err)
-		return fmt.Errorf("could not insert API key: %w", err)
+	if err := dbConn.WithContext(ctx).Create(&accessKey).Error; err != nil {
+		log.Error("CreateAuthToken: Failed to insert token: %v", err)
+		return fmt.Errorf("CreateAuthToken: could not insert token: %w", err)
 	}
 	return nil
 }
 
-func ListAPIKeys(ctx context.Context, offset int) ([]AccessKey, error) {
+func ListAuthTokens(ctx context.Context, dbConn *gorm.DB, offset int) ([]db.AuthToken, error) {
 	if offset < 0 {
 		return nil, errors.New("invalid offset: must be non-negative")
 	}
-	db, err := db.GetConnection()
-	if err != nil {
-		return nil, err
+
+	var accessKeys []db.AuthToken
+	result := dbConn.WithContext(ctx).Find(&accessKeys).Limit(5).Offset(offset).Order("created_at DESC")
+	if result.Error != nil {
+		log.Error("ListAuthTokens: Failed to list tokens: %v", result.Error)
+		return nil, fmt.Errorf("ListAuthTokens: could not list tokens: %w", result.Error)
 	}
-
-	query := `SELECT id, auth_token, description, created_at FROM apikeys ORDER BY created_at DESC LIMIT 5 OFFSET ?`
-
-	rows, err := db.QueryContext(ctx, query, offset)
-	if err != nil {
-		log.Error("ListAPIKeys: query error: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var keys []AccessKey
-	for rows.Next() {
-		var key AccessKey
-		if err := rows.Scan(&key.ID, &key.AuthToken, &key.Description, &key.CreatedAt); err != nil {
-			log.Error("ListAPIKeys: scan error: %v", err)
-			return nil, err
-		}
-		keys = append(keys, key)
-	}
-
-	if err := rows.Err(); err != nil {
-		log.Error("ListAPIKeys: row iteration error: %v", err)
-		return nil, err
-	}
-
-	return keys, nil
+	return accessKeys, nil
 }
 
-// GetAPIKey retrieves an API key by its value.
-func GetAPIKey(ctx context.Context, authToken string) (AccessKey, error) {
+func GetAuthToken(ctx context.Context, dbConn *gorm.DB, authToken string) (db.AuthToken, error) {
 	if authToken == "" {
-		return AccessKey{}, errors.New("GetAPIKey: authToken cannot be empty")
-	}
-	db, err := db.GetConnection()
-	if err != nil {
-		return AccessKey{}, err
+		return db.AuthToken{}, errors.New("GetAuthToken: authToken cannot be empty")
 	}
 
-	query := `SELECT id, auth_token, description, created_at FROM apikeys WHERE auth_token = ?`
-	var recoveredAPIKey AccessKey
-
-	err = db.QueryRowContext(ctx, query, authToken).Scan(
-		&recoveredAPIKey.ID,
-		&recoveredAPIKey.AuthToken,
-		&recoveredAPIKey.Description,
-		&recoveredAPIKey.CreatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return AccessKey{}, fmt.Errorf("GetAPIKey: key not found")
-		}
-		log.Error("GetAPIKey: query error: %v", err)
-		return AccessKey{}, err
+	var accessKey db.AuthToken
+	result := dbConn.WithContext(ctx).Where("auth_token = ?", authToken).First(&accessKey).Order("created_at DESC")
+	if result.Error != nil {
+		log.Error("GetAuthToken: Failed to insert token: %v", result.Error)
+		return db.AuthToken{}, fmt.Errorf("GetAuthToken: could not insert token: %w", result.Error)
 	}
 
-	return recoveredAPIKey, nil
+	return accessKey, nil
 }
 
-func DeleteAPIKey(ctx context.Context, keyId string) error {
+func DeleteAuthToken(ctx context.Context, dbConn *gorm.DB, id string) error {
 
-	db, err := db.GetConnection()
-	if err != nil {
-		return err
-	}
-	if keyId == "" {
-		return errors.New("DeleteAPIKey: key cannot be empty")
+	if id == "" {
+		return errors.New("DeleteAuthToken: key cannot be empty")
 	}
 
-	query := `DELETE FROM apikeys WHERE id = ?`
+	result := dbConn.WithContext(ctx).Delete(&db.AuthToken{}, id)
 
-	result, err := db.ExecContext(ctx, query, keyId)
-	if err != nil {
-		log.Error("DeleteAPIKey: query error: %v", err)
-		return err
+	if result.Error != nil {
+		log.Error("DeleteAuthToken: Failed to delete token: %v", result.Error)
+		return fmt.Errorf("DeleteAuthToken: could not delete token: %w", result.Error)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Error("DeleteAPIKey: failed to get affected rows: %v", err)
-		return err
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("DeleteAuthToken: no token deleted for id: %s", id)
 	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("DeleteAPIKey: no API key deleted for keyId: %s", keyId)
-	}
-	log.Info("Successfully deleted keyId %s", keyId)
+	log.Info("DeleteAuthToken: Successfully deleted token id %s", id)
 
 	return nil
 }
 
-func ValidateAPIKey(ctx context.Context, token string) error {
-	found, err := GetAPIKey(ctx, token)
+func ValidateAuthToken(ctx context.Context, db *gorm.DB, token string) error {
+	found, err := GetAuthToken(ctx, db, token)
 	if err != nil {
-		return fmt.Errorf("provided token key is invalid")
+		return fmt.Errorf("ValidateAuthToken: provided token key is invalid")
 	}
 	if found.AuthToken == "" {
-		return fmt.Errorf("auth token was not provided")
+		return fmt.Errorf("ValidateAuthToken: token was not provided")
 	}
 	return nil
 }

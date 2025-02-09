@@ -23,6 +23,9 @@ assets: client-assets server-assets
 bin/go-bindata:
 	go install github.com/go-bindata/go-bindata/go-bindata@latest
 
+tailwind-server:
+	npm run build-css-prod
+
 client-assets: bin/go-bindata
 	go-bindata -nomemcopy -pkg=assets -tags=$(BUILDTAGS) \
 		-debug=$(if $(findstring debug,$(BUILDTAGS)),true,false) \
@@ -30,7 +33,6 @@ client-assets: bin/go-bindata
 		assets/client/...
 
 server-assets: bin/go-bindata
-	npm run build-css-prod
 	go-bindata -nomemcopy -pkg=assets -tags=$(BUILDTAGS) -ignore \.css.i$ \
 		-debug=$(if $(findstring debug,$(BUILDTAGS)),true,false) \
 		-o=pkg/server/assets/assets_$(BUILDTAGS).go \

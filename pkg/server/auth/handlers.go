@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"ngrok/pkg/log"
 	"ngrok/pkg/server/assets"
+	"ngrok/pkg/server/config"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +17,11 @@ import (
 
 var tmpl *template.Template
 var serverAssetsPrefix = "assets/server"
+
+// Server struct embedding config
+type Handler struct {
+	Config *config.Config
+}
 
 /* var funcMap = template.FuncMap{
 	"equal": func(n int) bool { return n == 5 },
@@ -42,7 +48,7 @@ func init() {
 	}
 }
 
-func HomePage(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HomePage(w http.ResponseWriter, r *http.Request) {
 	year := time.Now().Year()
 
 	data := map[string]any{
@@ -56,21 +62,7 @@ func HomePage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func ShowAboutPage(w http.ResponseWriter, r *http.Request) {
-	year := time.Now().Year()
-
-	data := map[string]any{
-		"Title": "About Me | Go & HTMx Demo",
-		"Year":  year,
-	}
-
-	err := tmpl.ExecuteTemplate(w, "views/about.html", data)
-	if err != nil {
-		log.Error("Failed to execute template: %v", err)
-	}
-}
-
-func GetAPIKeys(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetAPIKeys(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	// fmt.Println("Time Zone: ", r.Header.Get("X-TimeZone"))
@@ -82,7 +74,7 @@ func GetAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	offset := (intPage - 1) * 5
 
-	apikeysSlice, err := ListAPIKeys(ctx, offset)
+	apikeysSlice, err := ListAuthTokens(ctx, h.Config.Database, offset)
 	if err != nil {
 		log.Error("something went wrong: %s", err.Error())
 	}
@@ -92,7 +84,7 @@ func GetAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func AddAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) AddAPIKey(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	description := strings.Trim(r.PostFormValue("description"), " ")
@@ -117,7 +109,7 @@ func AddAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := CreateAPIKey(ctx, description)
+	err := CreateAuthToken(ctx, h.Config.Database, description)
 	if err != nil {
 		var message string
 		if strings.Contains(err.Error(), "CHECK constraint failed") {
@@ -142,7 +134,7 @@ func AddAPIKey(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Location", "/")
 }
 
-func RemoveAPIKey(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RemoveAPIKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -156,7 +148,7 @@ func RemoveAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Info("Deleting key ID %s", id)
 
-	err := DeleteAPIKey(ctx, id)
+	err := DeleteAuthToken(ctx, h.Config.Database, id)
 	if err != nil {
 		w.Header().Set("HX-Retarget", "body")
 		w.Header().Set("HX-Reswap", "beforeend")
@@ -171,7 +163,7 @@ func RemoveAPIKey(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Location", "/")
 }
 
-func ServeStaticFiles(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeStaticFiles(w http.ResponseWriter, r *http.Request) {
 	fileName := serverAssetsPrefix + r.URL.Path
 
 	fileData, err := assets.Asset(fileName)
@@ -194,7 +186,7 @@ func ServeStaticFiles(w http.ResponseWriter, r *http.Request) {
 	w.Write(fileData)
 }
 
-func Health(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status": "OK", "message": "Web handler is working"}`)

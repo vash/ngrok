@@ -9,7 +9,7 @@ import (
 	log "ngrok/pkg/log"
 	"ngrok/pkg/msg"
 	"ngrok/pkg/server/auth"
-	"ngrok/pkg/server/db"
+	"ngrok/pkg/server/config"
 	"ngrok/pkg/util"
 	"os"
 	"runtime/debug"
@@ -31,7 +31,7 @@ var (
 	listeners map[string]*conn.Listener
 )
 
-func NewProxy(pxyConn conn.Conn, regPxy *msg.RegProxy) {
+func NewProxy(config *config.Config, pxyConn conn.Conn, regPxy *msg.RegProxy) {
 	// fail gracefully if the proxy connection fails to register
 	defer func() {
 		if r := recover(); r != nil {
@@ -59,7 +59,7 @@ func NewProxy(pxyConn conn.Conn, regPxy *msg.RegProxy) {
 // for ease of deployment. The hope is that by running on port 443, using
 // TLS and running all connections over the same port, we can bust through
 // restrictive firewalls.
-func tunnelListener(ctx context.Context, addr string, tlsConfig *tls.Config) {
+func tunnelListener(ctx context.Context, config *config.Config, addr string, tlsConfig *tls.Config) {
 	listener, err := conn.Listen(addr, "tun", tlsConfig)
 	if err != nil {
 		log.Error("Fatal error: failed to start listener on %s: %v", addr, err)
@@ -90,12 +90,12 @@ func tunnelListener(ctx context.Context, addr string, tlsConfig *tls.Config) {
 				log.Warn("Listener channel closed, shutting down")
 				return
 			}
-			go handleTunnelConnection(ctx, c)
+			go handleTunnelConnection(ctx, config, c)
 		}
 	}
 }
 
-func handleTunnelConnection(ctx context.Context, tunnelConn conn.Conn) {
+func handleTunnelConnection(ctx context.Context, config *config.Config, tunnelConn conn.Conn) {
 	// don't crash on panics
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,10 +121,10 @@ func handleTunnelConnection(ctx context.Context, tunnelConn conn.Conn) {
 	// Handle the message type
 	switch m := rawMsg.(type) {
 	case *msg.Auth:
-		NewControl(ctx, tunnelConn, m)
+		NewControl(ctx, config, tunnelConn, m)
 
 	case *msg.RegProxy:
-		NewProxy(tunnelConn, m)
+		NewProxy(config, tunnelConn, m)
 
 	default:
 		tunnelConn.Close()
@@ -170,26 +170,16 @@ func Main() {
 		listeners["https"] = startHttpListener(opts.httpsAddr, tlsConfig)
 	}
 
-	// Connect to DB
-	dbconn, err := db.GetConnection()
-	if err != nil {
-		log.Error("Failed to get database connection: %v", err)
-	}
-	defer dbconn.Close() // Ensure the connection is closed when the program finishes
-
-	// Pass the db connection to PrepareDB
-	if err := db.PrepareDB(dbconn); err != nil {
-		log.Error("Failed to prepare database: %v", err)
-	}
+	config := config.InitConfig()
+	handler := auth.Handler{Config: config}
 
 	// Admin endpoint
 	go func() {
-		http.HandleFunc("/", auth.HomePage)
-		http.HandleFunc("/about", auth.ShowAboutPage)
-		http.HandleFunc("/keys", auth.GetAPIKeys)
-		http.HandleFunc("/add", auth.AddAPIKey)
-		http.HandleFunc("/del", auth.RemoveAPIKey)
-		http.HandleFunc("/static/", auth.ServeStaticFiles)
+		http.HandleFunc("/", handler.HomePage)
+		http.HandleFunc("/keys", handler.GetAPIKeys)
+		http.HandleFunc("/add", handler.AddAPIKey)
+		http.HandleFunc("/del", handler.RemoveAPIKey)
+		http.HandleFunc("/static/", handler.ServeStaticFiles)
 
 		log.Info("Starting Web Admin endpoint on %s", opts.adminAddr)
 		if err := http.ListenAndServe(opts.adminAddr, nil); err != nil {
@@ -200,7 +190,7 @@ func Main() {
 
 	// Health endpoint
 	go func() {
-		http.HandleFunc("/status", auth.Health)
+		http.HandleFunc("/status", handler.Health)
 		log.Info("Starting health endpoint on %s", opts.healthAddr)
 		if err := http.ListenAndServe(opts.healthAddr, nil); err != nil {
 			log.Error("Failed to start status server: %v", err)
@@ -209,6 +199,6 @@ func Main() {
 	}()
 
 	// ngrok clients
-	tunnelListener(ctx, opts.tunnelAddr, tlsConfig)
+	tunnelListener(ctx, config, opts.tunnelAddr, tlsConfig)
 
 }

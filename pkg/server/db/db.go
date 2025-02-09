@@ -1,61 +1,55 @@
 package db
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"log"
-	"sync"
-	"time"
-
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var (
-	db   *sql.DB
-	once sync.Once
+	db *gorm.DB
 )
 
-const (
-	createTableStmt = `
-		CREATE TABLE IF NOT EXISTS apikeys (
-			id TEXT PRIMARY KEY CHECK(length(id) = 36),
-			auth_token TEXT CHECK(length(auth_token) = 64) NOT NULL,
-			description VARCHAR(255) NOT NULL,
-			created_at TIMESTAMP DEFAULT DATETIME
-		);`
-)
-
-// GetConnection returns the singleton database connection pool
-func GetConnection() (*sql.DB, error) {
-	var err error
-	once.Do(func() {
-		db, err = sql.Open("sqlite3", "apikeys.sqlite")
-		if err != nil {
-			log.Fatalf("Failed to open database: %v", err)
-		}
-		db.SetMaxOpenConns(10)
-		db.SetMaxIdleConns(5)
-		db.SetConnMaxLifetime(30 * time.Minute)
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-	return db, nil
+type AuthToken struct {
+	ID          string `gorm:"primaryKey;size:36"`
+	AuthToken   string `gorm:"unique;not null;size:64"`
+	Description string `gorm:"not null"`
+	gorm.Model
 }
 
-// PrepareDB ensures the necessary database tables are created
-func PrepareDB(db *sql.DB) error {
-	// Using context with timeout for better control
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+type Database struct {
+	Type     string `json:"type"`
+	File     string `json:"file,omitempty"`
+	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	User     string `json:"user,omitempty"`
+	Password string `json:"password,omitempty"`
+}
 
-	// Execute table creation with context
-	_, err := db.ExecContext(ctx, createTableStmt)
-	if err != nil {
-		panic(fmt.Errorf("failed to create table: %w", err))
+func AutoMigrate(db *gorm.DB) error {
+	return db.AutoMigrate(&AuthToken{})
+}
+
+func (a *AuthToken) BeforeCreate(tx *gorm.DB) (err error) {
+	if a.ID == "" {
+		a.ID = uuid.NewString() // Generates a UUIDv4 string
 	}
+	return
+}
 
-	return nil
+func GetDB(db *Database) (*gorm.DB, error) {
+	switch db.Type {
+	case "sqlite":
+		return gorm.Open(sqlite.Open(db.File), &gorm.Config{})
+	case "postgres": //TODO: implement env vars to take over
+		dsn := "host=localhost user=gorm dbname=gorm password=gorm sslmode=disable"
+		return gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	case "mysql": //TODO: implement env vars to take over
+		dsn := "gorm:gorm@tcp(127.0.0.1:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+		return gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	default:
+		return nil, gorm.ErrInvalidDB
+	}
 }
