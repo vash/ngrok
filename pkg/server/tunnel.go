@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"net"
 	"ngrok/pkg/conn"
-	"ngrok/pkg/log"
 	"ngrok/pkg/msg"
+	"ngrok/pkg/server/log"
 	"ngrok/pkg/util"
 	"os"
 	"strconv"
@@ -16,11 +16,14 @@ import (
 	"time"
 )
 
-var defaultPortMap = map[string]int{
-	"http":  80,
-	"https": 443,
-	"smtp":  25,
-}
+var (
+	servingDomain  string
+	defaultPortMap = map[string]int{
+		"http":  80,
+		"https": 443,
+		"smtp":  25,
+	}
+)
 
 /**
  * Tunnel: A control connection, metadata and proxy connections which
@@ -53,7 +56,7 @@ type Tunnel struct {
 func registerVhost(t *Tunnel, protocol string, servingPort int) (err error) {
 	vhost := os.Getenv("VHOST")
 	if vhost == "" {
-		vhost = fmt.Sprintf("%s:%d", opts.domain, servingPort)
+		vhost = fmt.Sprintf("%s:%d", servingDomain, servingPort)
 	}
 
 	// Canonicalize virtual host by removing default port (e.g. :80 on HTTP)
@@ -113,7 +116,7 @@ func NewTunnel(m *msg.ReqTunnel, ctl *Control) (t *Tunnel, err error) {
 
 			// create the url
 			addr := t.listener.Addr().(*net.TCPAddr)
-			t.url = fmt.Sprintf("tcp://%s:%d", opts.domain, addr.Port)
+			t.url = fmt.Sprintf("tcp://%s:%d", servingDomain, addr.Port)
 
 			// register it
 			if err = tunnelRegistry.RegisterAndCache(t.url, t); err != nil {

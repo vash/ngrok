@@ -4,8 +4,8 @@
 package client
 
 import (
+	"ngrok/pkg/client/log"
 	"ngrok/pkg/client/mvc"
-	"ngrok/pkg/log"
 	"ngrok/pkg/version"
 	"time"
 

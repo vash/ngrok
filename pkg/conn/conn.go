@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"ngrok/pkg/log"
+	"ngrok/pkg/server/log"
 	"sync"
 
 	vhost "github.com/inconshreveable/go-vhost"

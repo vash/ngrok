@@ -1,8 +1,8 @@
 package term
 
 import (
+	"ngrok/pkg/client/log"
 	"ngrok/pkg/client/mvc"
-	"ngrok/pkg/log"
 	"ngrok/pkg/proto"
 	"ngrok/pkg/util"
 	"unicode/utf8"

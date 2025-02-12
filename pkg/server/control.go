@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 	"ngrok/pkg/conn"
-	"ngrok/pkg/log"
 	"ngrok/pkg/msg"
 	"ngrok/pkg/server/auth"
 	"ngrok/pkg/server/config"
+	"ngrok/pkg/server/log"
 	"ngrok/pkg/util"
 	"ngrok/pkg/version"
 	"runtime/debug"
@@ -21,8 +21,9 @@ const (
 	connReapInterval    = 10 * time.Second
 	controlWriteTimeout = 10 * time.Second
 	proxyStaleDuration  = 60 * time.Second
-	proxyMaxPoolSize    = 10 //TODO: replace config
 )
+
+var proxyMaxPoolSize int
 
 type Control struct {
 	// auth message

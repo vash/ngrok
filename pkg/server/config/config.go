@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	RegistryCacheFile string
 	TLSCert           string
 	TLSKey            string
 	LogLevel          string
@@ -20,7 +21,6 @@ type Config struct {
 	HealthAddr        string
 	Domain            string
 	ProxyMaxPoolSize  int
-	SecretKey         string
 	ConnectionTimeout int
 	Database          *gorm.DB
 }
@@ -28,42 +28,42 @@ type Config struct {
 func InitConfig() *Config {
 
 	dbConf := db.Database{
-		Type:     getEnvStr("DATABASE_TYPE", "sqlite"),
+		Type:     getEnvStr("DATABASE_TYPE", "sqlite"), // sqlite/postgres/mysql
 		File:     getEnvStr("DATABASE_FILE", "sqlite.db"),
-		Host:     getEnvStr("DATABASE_HOST", "sqlite"),
-		Port:     getEnvInt("DATABASE_PORT", 3306),
-		User:     getEnvStr("DATABASE_USER", "sqlite"),
-		Password: getEnvStr("DATABASE_PASSWORD", "sqlite"),
+		Host:     getEnvStr("DATABASE_HOST", "localhost"),
+		Port:     getEnvInt("DATABASE_PORT", 5432),
+		User:     getEnvStr("DATABASE_USER", "postgres"),
+		Password: getEnvStr("DATABASE_PASSWORD", "supersecretpassw0rd"),
 	}
 
 	dbConn, err := db.GetDB(&dbConf)
 	if err != nil {
-		klog.Fatalf("Could not connect to database %w", err)
+		klog.Fatalf("Could not connect to database %v", err)
 	}
 	if dbConn.Error != nil {
-		klog.Fatalf("Could not connect to database v2 %w", err)
+		klog.Fatalf("Could not connect to database v2 %v", err)
 	}
 
 	err = db.AutoMigrate(dbConn)
 	if err != nil {
-		klog.Fatalf("Could not migrate database %w", err)
+		klog.Fatalf("Could not migrate database %v", err)
 	}
-	klog.Info("LGTM")
 	config := Config{
-		TLSCert:           getEnvStr("TLS_CERT_PATH", "/"),
-		TLSKey:            getEnvStr("TLS_CERT_PATH", "/"),
+		RegistryCacheFile: getEnvStr("REGISTRY_CACHE_FILE", ""),
+		TLSCert:           getEnvStr("TLS_CERT_PATH", "./certs/tls.crt"),
+		TLSKey:            getEnvStr("TLS_KEY_PATH", "./certs/tls.key"),
 		LogLevel:          getEnvStr("LOG_LEVEL", "DEBUG"), // DEBUG,INFO,WARNING,ERROR
 		HttpAddr:          getEnvStr("HTTP_LISTEN_ADDR", ":80"),
 		HttpsAddr:         getEnvStr("HTTPS_LISTEN_ADDR", ":443"),
 		TunnelAddr:        getEnvStr("TUNNEL_LISTEN_ADDR", ":4443"),
 		AdminAddr:         getEnvStr("ADMIN_ADDR", ":4111"),
 		HealthAddr:        getEnvStr("HTTP_ADDR", ":4112"),
-		Domain:            getEnvStr("HTTP_ADDR", ":80"),
+		Domain:            getEnvStr("DOMAIN", "ngrok.me"),
 		ProxyMaxPoolSize:  getEnvInt("PROXY_MAX_POOL_SIZE", 10),
-		SecretKey:         getEnvStr("SECRET_KEY", "supersecretkey"),
 		ConnectionTimeout: getEnvInt("CONNECTION_TIMEOUT_SECONDS", 10),
 		Database:          dbConn,
 	}
+	klog.Infof("CONFIG IS %+v", config)
 
 	return &config
 }

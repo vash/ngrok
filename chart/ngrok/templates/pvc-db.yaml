@@ -1,0 +1,30 @@
+{{- if eq .Values.db.type "sqlite" }}
+{{- $db := .Values.persistence.persistentVolumeClaim.db -}}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "ngrok.fullname" . }}-db
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+  {{- range $key, $value := $db.annotations }}
+    {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- if eq .Values.persistence.resourcePolicy "keep" }}
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+{{ include "ngrok.labels" . | indent 4 }}
+spec:
+  accessModes: 
+    - {{ $db.accessMode }}
+  resources:
+    requests:
+      storage: {{ $db.size }}
+  {{- if $db.storageClass }}
+    {{- if eq "-" $db.storageClass }}
+  storageClassName: ""
+    {{- else }}
+  storageClassName: {{ $db.storageClass }}
+    {{- end }}
+  {{- end }}
+{{- end }}

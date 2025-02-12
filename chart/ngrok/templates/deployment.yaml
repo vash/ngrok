@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ngrok.fullname" . }}
+  labels:
+    {{- include "ngrok.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ngrok.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "ngrok.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ngrok.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          env:
+          {{- range $key, $value := .Values.env }}
+          - name: {{ $key }}
+            value: "{{ $value }}"
+          {{- end }}
+          - name: REGISTRY_CACHE_FILE
+            value: /registry/cache
+          - name: DATABASE_TYPE
+            value: "{{ .Values.db.type }}"
+          {{- if eq .Values.db.type "sqlite" }}
+          - name: DATABASE_FILE
+            value: /db/sqlite.db
+          {{- else }}
+          - name: DATABASE_HOST
+            value: "{{ .Values.db.host }}"
+          - name: DATABASE_PORT
+            value: "{{ .Values.db.port }}"
+          - name: DATABASE_USER
+            value: "{{ .Values.db.user }}"
+          {{- end }}
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          envFrom:
+            - secretRef:
+                name: {{ include "ngrok.fullname" . }}-secret
+          volumeMounts:
+        {{- if eq .Values.db.type "sqlite" }}
+          - name: db-data
+            mountPath: /db
+        {{- end }}
+          - name: registry-data
+            mountPath: /registry
+          - name: tls-config
+            mountPath: /tls
+            readOnly: true
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          args:
+           {{- with .Values.args }}
+            {{- toYaml . | nindent 12 }}
+           {{- end }}
+          args:
+           {{- with .Values.args }}
+            {{- toYaml . | nindent 12 }}
+           {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+          - name: http
+            containerPort: 8080
+            protocol: TCP
+          livenessProbe:
+            failureThreshold: 2
+            httpGet:
+              path: /status
+              port: 4112
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: ngrok
+          readinessProbe:
+            failureThreshold: 6
+            httpGet:
+              path: /status
+              port: 4112
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+      - name: tls-config
+        secret:
+          secretName: {{ .Values.tls.existingSecret | default (include "ngrok.fullname" .) }}
+      - name: registry-data
+        persistentVolumeClaim:
+          claimName: {{ .Values.persistence.persistentVolumeClaim.existingClaim | default (include "ngrok.fullname" .) }}-registry
+      {{- if eq .Values.db.type "sqlite" }}
+      - name: db-data
+        persistentVolumeClaim:
+          claimName: {{ .Values.persistence.persistentVolumeClaim.existingClaim | default (include "ngrok.fullname" .) }}-db
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

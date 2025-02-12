@@ -23,11 +23,11 @@ func LoadTLSConfig(crtPath string, keyPath string) (tlsConfig *tls.Config, err e
 		cert tls.Certificate
 	)
 
-	if crt, err = fileOrAsset(crtPath, "assets/server/tls/snakeoil.crt"); err != nil {
+	if crt, err = fileOrAsset(crtPath, "assets/server/tls/default.crt"); err != nil {
 		return
 	}
 
-	if key, err = fileOrAsset(keyPath, "assets/server/tls/snakeoil.key"); err != nil {
+	if key, err = fileOrAsset(keyPath, "assets/server/tls/default.key"); err != nil {
 		return
 	}
 

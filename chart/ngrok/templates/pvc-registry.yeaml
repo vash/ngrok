@@ -1,0 +1,28 @@
+{{- $registry := .Values.persistence.persistentVolumeClaim.registry -}}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ template "ngrok.fullname" . }}-registry
+  namespace: {{ .Release.Namespace | quote }}
+  annotations:
+  {{- range $key, $value := $registry.annotations }}
+    {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- if eq .Values.persistence.resourcePolicy "keep" }}
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+{{ include "ngrok.labels" . | indent 4 }}
+spec:
+  accessModes: 
+    - {{ $registry.accessMode }}
+  resources:
+    requests:
+      storage: {{ $registry.size }}
+  {{- if $registry.storageClass }}
+    {{- if eq "-" $registry.storageClass }}
+  storageClassName: ""
+    {{- else }}
+  storageClassName: {{ $registry.storageClass }}
+    {{- end }}
+  {{- end }}

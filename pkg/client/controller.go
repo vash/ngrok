@@ -2,10 +2,10 @@ package client
 
 import (
 	"fmt"
+	"ngrok/pkg/client/log"
 	"ngrok/pkg/client/mvc"
 	"ngrok/pkg/client/views/term"
 	"ngrok/pkg/client/views/web"
-	"ngrok/pkg/log"
 	"ngrok/pkg/proto"
 	"ngrok/pkg/util"
 	"sync"

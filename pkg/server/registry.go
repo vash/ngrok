@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"ngrok/pkg/cache"
-	"ngrok/pkg/log"
+	"ngrok/pkg/server/log"
 	"sync"
 	"time"
 )
@@ -86,6 +86,7 @@ func (r *TunnelRegistry) Register(url string, t *Tunnel) error {
 	}
 
 	r.tunnels[url] = t
+	fmt.Printf("[DEBUG] TUNNELS %+v", r.tunnels)
 
 	return nil
 }
@@ -111,6 +112,7 @@ func (r *TunnelRegistry) GetCachedRegistration(t *Tunnel) (url string) {
 		url = string(v.(cacheUrl))
 		t.Debug("Found registry affinity %s for %s", url, ipCacheKey)
 	}
+	t.Debug("Didn't find cache registration for %s", url, ipCacheKey)
 	return
 }
 

@@ -2,23 +2,14 @@ package log
 
 import (
 	"fmt"
+
 	log "github.com/alecthomas/log4go"
 )
 
 var root log.Logger = make(log.Logger)
 
-func LogTo(target string, level_name string) {
-	var writer log.LogWriter = nil
-
-	switch target {
-	case "stdout":
-		writer = log.NewConsoleLogWriter()
-	case "none":
-		// no logging
-	default:
-		writer = log.NewFileLogWriter(target, true)
-	}
-
+func LogTo(level_name string) {
+	writer := log.NewConsoleLogWriter()
 	if writer != nil {
 		var level = log.DEBUG
 

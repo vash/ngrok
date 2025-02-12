@@ -5,7 +5,7 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"ngrok/pkg/log"
+	"ngrok/pkg/client/log"
 	"os"
 	"os/user"
 	"path"

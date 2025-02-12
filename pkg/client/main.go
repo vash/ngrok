@@ -3,7 +3,7 @@ package client
 import (
 	"fmt"
 	"math/rand"
-	"ngrok/pkg/log"
+	"ngrok/pkg/client/log"
 	"ngrok/pkg/util"
 	"os"
 	"runtime"

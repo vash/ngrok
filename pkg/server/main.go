@@ -6,10 +6,10 @@ import (
 	"math/rand"
 	"net/http"
 	"ngrok/pkg/conn"
-	log "ngrok/pkg/log"
 	"ngrok/pkg/msg"
 	"ngrok/pkg/server/auth"
 	"ngrok/pkg/server/config"
+	log "ngrok/pkg/server/log"
 	"ngrok/pkg/util"
 	"os"
 	"runtime/debug"
@@ -27,7 +27,6 @@ var (
 	controlRegistry *ControlRegistry
 
 	// XXX: kill these global variables - they're only used in tunnel.go for constructing forwarding URLs
-	opts      *Options
 	listeners map[string]*conn.Listener
 )
 
@@ -96,6 +95,7 @@ func tunnelListener(ctx context.Context, config *config.Config, addr string, tls
 }
 
 func handleTunnelConnection(ctx context.Context, config *config.Config, tunnelConn conn.Conn) {
+	log.Info("handleTunnelConnection: entered")
 	// don't crash on panics
 	defer func() {
 		if r := recover(); r != nil {
@@ -106,6 +106,7 @@ func handleTunnelConnection(ctx context.Context, config *config.Config, tunnelCo
 	// Set an initial read deadline
 	tunnelConn.SetReadDeadline(time.Now().Add(connReadTimeout))
 
+	log.Info("handleTunnelConnection: reading message")
 	// Read a message from the tunnel connection
 	var rawMsg msg.Message
 	var err error
@@ -118,6 +119,8 @@ func handleTunnelConnection(ctx context.Context, config *config.Config, tunnelCo
 	// Clear the read deadline (heartbeat will handle dead connections)
 	tunnelConn.SetReadDeadline(time.Time{})
 
+	log.Info("handleTunnelConnection: handling message %+v", rawMsg)
+	// Read a message from the tunnel connection
 	// Handle the message type
 	switch m := rawMsg.(type) {
 	case *msg.Auth:
@@ -134,10 +137,13 @@ func handleTunnelConnection(ctx context.Context, config *config.Config, tunnelCo
 func Main() {
 	ctx := context.Background()
 	// parse options
-	opts = parseArgs()
+	config := config.InitConfig()
+
+	servingDomain = config.Domain
+	proxyMaxPoolSize = config.ProxyMaxPoolSize
 
 	// init logging
-	log.LogTo(opts.logto, opts.loglevel)
+	log.LogTo(config.LogLevel)
 
 	// seed random number generator
 	seed, err := util.RandomSeed()
@@ -147,58 +153,58 @@ func Main() {
 	rand.NewSource(seed)
 
 	// init tunnel/control registry
-	registryCacheFile := os.Getenv("REGISTRY_CACHE_FILE")
-	tunnelRegistry = NewTunnelRegistry(registryCacheSize, registryCacheFile)
+	tunnelRegistry = NewTunnelRegistry(registryCacheSize, config.RegistryCacheFile)
 	controlRegistry = NewControlRegistry()
 
 	// start listeners
 	listeners = make(map[string]*conn.Listener)
 
 	// load tls configuration
-	tlsConfig, err := LoadTLSConfig(opts.tlsCrt, opts.tlsKey)
+	tlsConfig, err := LoadTLSConfig(config.TLSCert, config.TLSKey)
 	if err != nil {
 		panic(err)
 	}
 
 	// listen for http
-	if opts.httpAddr != "" {
-		listeners["http"] = startHttpListener(opts.httpAddr, nil)
+	if config.HttpAddr != "" {
+		listeners["http"] = startHttpListener(config.HttpAddr, nil)
 	}
 
 	// listen for https
-	if opts.httpsAddr != "" {
-		listeners["https"] = startHttpListener(opts.httpsAddr, tlsConfig)
+	if config.HttpsAddr != "" {
+		listeners["https"] = startHttpListener(config.HttpsAddr, tlsConfig)
 	}
 
-	config := config.InitConfig()
 	handler := auth.Handler{Config: config}
+	if config.AdminAddr != "" {
+		// Admin endpoint
+		go func() {
+			http.HandleFunc("/", handler.HomePage)
+			http.HandleFunc("/keys", handler.GetAPIKeys)
+			http.HandleFunc("/add", handler.AddAPIKey)
+			http.HandleFunc("/del", handler.RemoveAPIKey)
+			http.HandleFunc("/static/", handler.ServeStaticFiles)
 
-	// Admin endpoint
-	go func() {
-		http.HandleFunc("/", handler.HomePage)
-		http.HandleFunc("/keys", handler.GetAPIKeys)
-		http.HandleFunc("/add", handler.AddAPIKey)
-		http.HandleFunc("/del", handler.RemoveAPIKey)
-		http.HandleFunc("/static/", handler.ServeStaticFiles)
+			log.Info("Starting Web Admin endpoint on %s", config.AdminAddr)
+			if err := http.ListenAndServe(config.AdminAddr, nil); err != nil {
+				log.Error("Failed to start status server: %v", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
-		log.Info("Starting Web Admin endpoint on %s", opts.adminAddr)
-		if err := http.ListenAndServe(opts.adminAddr, nil); err != nil {
-			log.Error("Failed to start status server: %v", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Health endpoint
-	go func() {
-		http.HandleFunc("/status", handler.Health)
-		log.Info("Starting health endpoint on %s", opts.healthAddr)
-		if err := http.ListenAndServe(opts.healthAddr, nil); err != nil {
-			log.Error("Failed to start status server: %v", err)
-			os.Exit(1)
-		}
-	}()
+	if config.HealthAddr != "" {
+		go func() {
+			http.HandleFunc("/status", handler.Health)
+			log.Info("Starting health endpoint on %s", config.HealthAddr)
+			if err := http.ListenAndServe(config.HealthAddr, nil); err != nil {
+				log.Error("Failed to start status server: %v", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	// ngrok clients
-	tunnelListener(ctx, config, opts.tunnelAddr, tlsConfig)
+	tunnelListener(ctx, config, config.TunnelAddr, tlsConfig)
 
 }
